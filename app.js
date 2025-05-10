@@ -9,6 +9,7 @@ const setupDbCommand = require('./src/cli/setupDbCommand'); // Dodaj import setu
 const userRateCommand = require('./src/cli/userRateCommand');
 const syncTasksCommand = require('./src/cli/syncTasksCommand');
 const generateAggregatesCommand = require('./src/cli/generateAggregatesCommand');
+const fullSyncCommand = require('./src/cli/fullSyncCommand');
 
 async function main() {
   // Najpierw sprawdźmy połączenie z bazą danych, zanim zaczniemy cokolwiek robić
@@ -31,6 +32,7 @@ async function main() {
     .command(userRateCommand)
     .command(syncTasksCommand)
     .command(generateAggregatesCommand)
+    .command(fullSyncCommand)
 
     // Możesz dodać więcej globalnych opcji, np. --verbose
     // .option('verbose', {

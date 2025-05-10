@@ -56,7 +56,12 @@ module.exports = {
 
     let syncLogId = null;
     const syncStartTime = new Date();
-    let aggregatesProcessed = 0;
+    // Liczniki dla podsumowania
+    let totalParentTasksFound = 0;
+    let parentTasksSkippedNoAssignee = 0;
+    let parentTasksSkippedUserFilter = 0;
+    let aggregatesGenerated = 0; // Liczba unikalnych parent tasks z agregatem
+    let aggregatesToInsert = [];
 
     try {
       // Rozpocznij logowanie operacji
@@ -69,24 +74,16 @@ module.exports = {
       syncLogId = logEntry[0].log_id || logEntry[0];
 
       // 1. Pobierz wszystkie zadania z bazy (lub filtrowane, jeśli podano listId)
-      // Potrzebujemy wszystkich zadań, aby zbudować drzewo rodzic-dziecko dla obliczeń.
       console.log('Fetching all tasks from the database to build hierarchy...');
-      const allDbTasksQuery = db('Tasks').select('*');
-      // Jeśli chcemy filtrować listę zadań do przetworzenia, to filtrowanie parent tasks będzie później
-      // Ale dla budowy drzewa potrzebujemy potencjalnie wszystkich.
-      // Jeśli jednak `listId` jest podane, to chcemy tylko zadania z tej listy i ich dzieci.
-      // To jest bardziej skomplikowane, bo dzieci mogą nie być na tej samej liście.
-      // Na razie uproszczenie: jeśli listId, to bierzemy tylko parenty z tej listy, ale dzieci mogą być skądkolwiek.
-
-      const allDbTasks = await allDbTasksQuery;
+      const allDbTasks = await db('Tasks').select('*');
       if (allDbTasks.length === 0) {
         console.log('No tasks found in the database to aggregate.');
         if (syncLogId) await db('SyncLog').where('log_id', syncLogId).update({ status: 'SUCCESS', details_message: 'No tasks to aggregate.', sync_end_time: format(new Date(), 'yyyy-MM-dd HH:mm:ss')});
+        await db.destroy();
         return;
       }
       console.log(`Fetched ${allDbTasks.length} tasks from DB.`);
 
-      // 2. Zbuduj mapy dla szybkiego dostępu: tasksMap (ID -> task) i childrenMap (parentID -> [childID])
       const tasksMap = new Map();
       const childrenMap = new Map();
       allDbTasks.forEach(task => {
@@ -99,96 +96,89 @@ module.exports = {
         }
       });
 
-      // 3. Znajdź zadania "Parent" do przetworzenia
-      let parentTasksQuery = db('Tasks')
-        .where('is_parent_flag', true);
-
+      let parentTasksQuery = db('Tasks').where('is_parent_flag', true);
       if (argv.listId) {
         parentTasksQuery = parentTasksQuery.where('clickup_list_id', argv.listId);
       }
-      
-      // Jeśli podano userId, musimy dołączyć TaskAssignees
-      // To skomplikuje, bo jedno zadanie "Parent" może być przypisane do wielu osób,
-      // a my chcemy agregat per (parent_task, reported_for_user_id)
-      // Specyfikacja mówi: "w kontekście konkretnego użytkownika (przypisanego do zadania "Parent")"
-
-      // Pobierz wszystkie zadania "Parent" spełniające kryteria (listId)
       const parentTasksToProcess = await parentTasksQuery;
-      console.log(`Found ${parentTasksToProcess.length} parent tasks to process based on list criteria.`);
-
-      const aggregatesToInsert = [];
+      totalParentTasksFound = parentTasksToProcess.length;
+      console.log(`Found ${totalParentTasksFound} parent tasks to process based on list criteria.`);
 
       for (const parentTask of parentTasksToProcess) {
-        // Znajdź użytkowników przypisanych do tego zadania "Parent"
         const assigneesQuery = db('TaskAssignees')
           .join('Users', 'TaskAssignees.clickup_user_id', '=', 'Users.clickup_user_id')
           .where('TaskAssignees.clickup_task_id', parentTask.clickup_task_id)
           .select('Users.clickup_user_id', 'Users.username');
-        
         if (argv.userId) {
-            assigneesQuery.where('Users.clickup_user_id', argv.userId);
+          assigneesQuery.where('Users.clickup_user_id', argv.userId);
         }
         const assignees = await assigneesQuery;
 
-        if (assignees.length === 0 && argv.userId) {
-            // Jeśli filtrowaliśmy po userID, a ten parent task nie jest do niego przypisany, pomiń
-            continue;
-        }
-        if (assignees.length === 0 && !argv.userId) {
-            // Jeśli nie filtrujemy po userID, a zadanie parent nie ma przypisanych,
-            // możemy stworzyć agregat bez `reported_for_user_id` lub pominąć.
-            // Na razie zakładamy, że agregat jest ZAWSZE w kontekście użytkownika.
-            // Można by tu dodać logikę dla "nieprzypisanych" zadań parent.
-            console.warn(`Parent task ${parentTask.clickup_task_id} has no assignees. Skipping aggregate generation for it unless a default user context is defined.`);
-            continue;
+        if (assignees.length === 0) {
+          if (argv.userId) {
+            parentTasksSkippedUserFilter++;
+          } else {
+            console.warn(`Parent task ${parentTask.clickup_task_id} (Name: "${parentTask.name}") has no assignees in the database. Skipping aggregate generation for it.`);
+            parentTasksSkippedNoAssignee++;
+          }
+          continue;
         }
 
         const totalTimeMs = calculateTotalTimeRecursive(parentTask.clickup_task_id, tasksMap, childrenMap, new Set());
         const totalMinutes = Math.floor(totalTimeMs / 60000);
         const totalSeconds = Math.round((totalTimeMs % 60000) / 1000);
 
+        let generatedForThisParentTask = false;
         for (const assignee of assignees) {
           aggregatesToInsert.push({
             clickup_parent_task_id: parentTask.clickup_task_id,
-            reported_for_user_id: assignee.clickup_user_id, // Użytkownik przypisany do zadania Parent
+            reported_for_user_id: assignee.clickup_user_id,
             parent_task_name: parentTask.name,
             client_name: parentTask.custom_field_client,
             extracted_month_from_parent_name: parentTask.extracted_month_from_name,
             total_time_minutes: totalMinutes,
             total_time_seconds: totalSeconds,
-            last_calculated_at: format(syncStartTime, "yyyy-MM-dd HH:mm:ss"), // Użyj syncStartTime dla spójności
+            last_calculated_at: format(syncStartTime, "yyyy-MM-dd HH:mm:ss"),
           });
-          aggregatesProcessed++;
+          generatedForThisParentTask = true;
+        }
+        if (generatedForThisParentTask) {
+          aggregatesGenerated++;
         }
       }
 
       if (aggregatesToInsert.length > 0) {
-        console.log(`Preparing to insert/update ${aggregatesToInsert.length} aggregate entries...`);
-        // Użyj transakcji do wstawienia/aktualizacji agregatów
-        // `onConflict` dla klucza złożonego (`clickup_parent_task_id`, `reported_for_user_id`)
+        // ZMIANA LOGU: aggregatesToInsert.length to liczba wierszy do wstawienia (może być > aggregatesGenerated)
+        console.log(`Preparing to insert/update ${aggregatesToInsert.length} aggregate entries (for ${aggregatesGenerated} unique parent tasks with assignees)...`);
         await db.transaction(async trx => {
-          // Można najpierw usunąć stare agregaty dla przetwarzanych zadań/użytkowników, jeśli to konieczne
-          // np. jeśli `listId` lub `userId` jest podane, usuń pasujące agregaty przed wstawieniem nowych.
-          // Na razie proste wstawienie z `merge`.
-          // SQLite: .onConflict(['col1', 'col2']).merge()
-          // PostgreSQL: .onConflict('(col1, col2) DO UPDATE SET ...')
-          // Knex dla SQLite powinien obsłużyć listę kolumn w onConflict.
           await trx('ReportedTaskAggregates')
             .insert(aggregatesToInsert)
             .onConflict(['clickup_parent_task_id', 'reported_for_user_id'])
-            .merge(); // Zaktualizuj, jeśli istnieje konflikt na kluczu złożonym
+            .merge();
         });
         console.log(`${aggregatesToInsert.length} aggregate entries processed successfully.`);
       } else {
-        console.log('No aggregates to insert/update based on the criteria.');
+        console.log('No new/updated aggregates to generate based on the criteria and assignees.');
       }
 
-      // Zaktualizuj log synchronizacji - sukces
+      // ZMIANA PODSUMOWANIA
+      console.log('\n--- Aggregate Generation Summary ---');
+      console.log(`Total "Parent" tasks found matching criteria: ${totalParentTasksFound}`);
+      if (argv.userId) {
+        console.log(`"Parent" tasks skipped (not assigned to user ID ${argv.userId}): ${parentTasksSkippedUserFilter}`);
+      }
+      console.log(`"Parent" tasks skipped (no assignees found in DB): ${parentTasksSkippedNoAssignee}`);
+      console.log(`Unique "Parent" tasks for which aggregates were generated/updated: ${aggregatesGenerated}`);
+      console.log(`Total aggregate rows written to ReportedTaskAggregates: ${aggregatesToInsert.length}`);
+      console.log('------------------------------------');
+
       if (syncLogId) {
         await db('SyncLog').where('log_id', syncLogId).update({
           sync_end_time: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
-          items_fetched_new: aggregatesProcessed, // Lub inna metryka, np. liczba unikalnych zadań Parent
+          items_fetched_new: aggregatesGenerated, // Liczba unikalnych zadań Parent, dla których coś zrobiono
+          items_updated: aggregatesToInsert.length - aggregatesGenerated, // Jeśli jeden parent ma wielu assignees, to te dodatkowe wpisy
           status: 'SUCCESS',
+          details_message: `Total Parent Tasks: ${totalParentTasksFound}, Skipped (No Assignee): ${parentTasksSkippedNoAssignee}, Skipped (User Filter): ${parentTasksSkippedUserFilter}, Aggregates Written: ${aggregatesToInsert.length} for ${aggregatesGenerated} parent tasks.`
         });
       }
       console.log('Aggregate generation complete.');
