@@ -225,14 +225,36 @@ module.exports = {
         await db.transaction(async trx => {
           for (const task of clickUpTasks) {
             const existingTask = await trx('Tasks').where('clickup_task_id', task.id).first();
-            
+            // Zapamiętaj wartości przed upsertem, jeśli zadanie istnieje, do późniejszego porównania
+            let oldIsParentFlag, oldClient, oldMonth;
+            if (existingTask) {
+              oldIsParentFlag = existingTask.is_parent_flag;
+              oldClient = existingTask.custom_field_client;
+              oldMonth = existingTask.extracted_month_from_name;
+            }
+
             await upsertTaskToDb(task, argv.listId, trx); // Zapisz/aktualizuj zadanie
             await syncTaskAssignees(task.id, task.assignees || [], trx); // Zsynchronizuj przypisanych
 
             if (existingTask) {
-              // Proste sprawdzenie, czy były zmiany (można rozbudować o porównanie pól)
-              // date_updated_clickup jest dobrym wskaźnikiem
-              if (task.date_updated && existingTask.date_updated_clickup !== format(fromUnixTime(parseInt(task.date_updated) / 1000), "yyyy-MM-dd HH:mm:ss")) {
+              // Po upsercie: zmiana logiki dla updatedTasksCount
+              let wasUpdated = false;
+              if (argv.fullSync) {
+                // W trybie full-sync, jeśli zadanie istniało, uznajemy je za potencjalnie zaktualizowane o nowe pola
+                wasUpdated = true;
+              } else {
+                // W trybie inkrementalnym, bazuj na dacie aktualizacji z ClickUp
+                if (
+                  task.date_updated &&
+                  existingTask.date_updated_clickup !== format(fromUnixTime(parseInt(task.date_updated) / 1000), "yyyy-MM-dd HH:mm:ss")
+                ) {
+                  wasUpdated = true;
+                }
+                // Dodatkowe, bardziej precyzyjne sprawdzenie, czy faktycznie przetworzone pola się zmieniły,
+                // nawet jeśli data z ClickUp nie. To wymagałoby dostępu do taskPayload lub ponownego obliczenia tutaj.
+                // Na razie powyższe uproszczenie.
+              }
+              if (wasUpdated) {
                 updatedTasksCount++;
               }
             } else {
