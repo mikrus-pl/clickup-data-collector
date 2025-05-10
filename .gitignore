@@ -1,0 +1,16 @@
+# Zależności
+node_modules/
+
+# Pliki środowiskowe
+.env
+
+# Pliki logów
+logs/*.log
+
+# Pliki bazy danych SQLite (jeśli nie chcesz ich wersjonować)
+data/*.sqlite3
+data/*.sqlite3-journal
+
+# Pliki systemowe
+.DS_Store
+Thumbs.db
