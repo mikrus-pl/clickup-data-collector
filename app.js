@@ -10,16 +10,17 @@ const userRateCommand = require('./src/cli/userRateCommand');
 const syncTasksCommand = require('./src/cli/syncTasksCommand');
 const generateAggregatesCommand = require('./src/cli/generateAggregatesCommand');
 const fullSyncCommand = require('./src/cli/fullSyncCommand');
+const purgeDataCommand = require('./src/cli/purgeDataCommand');
 
 async function main() {
   // Najpierw sprawdźmy połączenie z bazą danych, zanim zaczniemy cokolwiek robić
-  try {
-    await testConnection();
-  } catch (error) {
-    // Jeśli nie można połączyć się z bazą, nie ma sensu kontynuować
-    // testConnection już loguje błąd
-    process.exit(1);
-  }
+//   try {
+//     await testConnection();
+//   } catch (error) {
+//     // Jeśli nie można połączyć się z bazą, nie ma sensu kontynuować
+//     // testConnection już loguje błąd
+//     process.exit(1);
+//   }
 
   // Konfiguracja Yargs
   yargs(hideBin(process.argv)) // hideBin(process.argv) usuwa pierwsze dwa argumenty (ścieżkę do node i skryptu)
@@ -33,6 +34,7 @@ async function main() {
     .command(syncTasksCommand)
     .command(generateAggregatesCommand)
     .command(fullSyncCommand)
+    .command(purgeDataCommand)
 
     // Możesz dodać więcej globalnych opcji, np. --verbose
     // .option('verbose', {

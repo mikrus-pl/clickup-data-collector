@@ -89,6 +89,7 @@ module.exports = {
       } else {
         console.log('Full sync finished successfully.');
       }
+      process.exit(process.exitCode || 0);
     }
   },
 };
