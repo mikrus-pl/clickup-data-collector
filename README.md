@@ -1,7 +1,7 @@
 # ClickUp Data Collector
 
 **Wersja:** 1.0.0  
-**Autor:** [Twoje Imię/Nazwa Firmy]
+**Autor:** Michał S. Wasąnik
 
 ## Spis Treści
 1. [Cel Aplikacji](#1-cel-aplikacji)
