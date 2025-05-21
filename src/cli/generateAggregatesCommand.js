@@ -134,7 +134,7 @@ module.exports = {
             clickup_parent_task_id: parentTask.clickup_task_id,
             reported_for_user_id: assignee.clickup_user_id,
             parent_task_name: parentTask.name,
-            client_name: parentTask.custom_field_client,
+            client_name: parentTask.custom_field_client_2025,
             extracted_month_from_parent_name: parentTask.extracted_month_from_name,
             total_time_minutes: totalMinutes,
             total_time_seconds: totalSeconds,
