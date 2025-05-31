@@ -22,7 +22,7 @@ async function getUserById(clickupUserId) {
  * @returns {Promise<object>} Obiekt dodanego/zaktualizowanego użytkownika.
  */
 async function upsertUser(userData) {
-  const { clickup_user_id, username, email, is_active = true } = userData;
+  const { clickup_user_id, username, email, role, is_active = true } = userData;
   const now = format(new Date(), "yyyy-MM-dd HH:mm:ss"); // Aktualny czas dla date_synced
 
   const userPayload = {
@@ -30,6 +30,7 @@ async function upsertUser(userData) {
     // Jeśli username jest falsy (null, undefined, pusty string), użyj domyślnej wartości.
     username: username || `UnknownUser_${clickup_user_id}`,
     email: email || null,
+    role: role, // Add this line
     is_active,
     date_synced: now
   };

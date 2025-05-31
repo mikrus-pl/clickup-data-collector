@@ -39,20 +39,32 @@ module.exports = {
       if (clickUpUsers && clickUpUsers.length > 0) {
         console.log(`Found ${clickUpUsers.length} users in ClickUp. Syncing with database...`);
         for (const cuUser of clickUpUsers) {
-          const existingUser = await userService.getUserById(cuUser.id);
-          const userData = {
-            clickup_user_id: cuUser.id,
-            username: cuUser.username,
-            email: cuUser.email,
-            is_active: true
-          };
-          await userService.upsertUser(userData);
-          if (existingUser) {
-            if (existingUser.username !== userData.username || existingUser.email !== userData.email || existingUser.is_active !== userData.is_active) {
-                updatedUsersCount++;
+          const userRole = cuUser.role; // Assuming role is directly available on cuUser
+
+          // Define allowed roles
+          const allowedRoles = [1, 2, 3]; // Owner, Admin, Member
+
+          if (allowedRoles.includes(userRole)) {
+            const existingUser = await userService.getUserById(cuUser.id);
+            const userData = {
+              clickup_user_id: cuUser.id,
+              username: cuUser.username,
+              email: cuUser.email,
+              role: userRole, // Pass the role
+              is_active: true
+            };
+            await userService.upsertUser(userData);
+            // Update counts
+            if (existingUser) {
+              if (existingUser.username !== userData.username || existingUser.email !== userData.email || existingUser.is_active !== userData.is_active || existingUser.role !== userData.role) {
+                  updatedUsersCount++;
+              }
+            } else {
+              newUsersCount++;
             }
           } else {
-            newUsersCount++;
+            // Optionally, log skipped users
+            console.log(`Skipping user ${cuUser.username} (ID: ${cuUser.id}) with role ${userRole} (Guest).`);
           }
         }
         console.log(`Synchronization complete: ${newUsersCount} new users, ${updatedUsersCount} updated users.`);
