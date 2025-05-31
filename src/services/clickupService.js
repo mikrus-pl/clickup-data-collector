@@ -82,6 +82,7 @@ async function getAllUsersFromTeams() {
             id: member.user.id,
             username: member.user.username,
             email: member.user.email,
+            role: member.role, // Add this line
             // Możesz dodać więcej pól, jeśli są potrzebne i dostępne, np. profilePicture
           });
         }
