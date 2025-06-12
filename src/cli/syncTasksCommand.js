@@ -4,7 +4,8 @@ const { format, fromUnixTime } = require('date-fns');
 const { extractPolishMonth } = require('../utils/monthParser'); // <--- NOWY IMPORT
 
 const CUSTOM_FIELD_IS_PARENT = 'IsParent'; // Upewnij się, że nazwa jest dokładna
-const CUSTOM_FIELD_CLIENT = 'CLIENT';     // Upewnij się, że nazwa jest dokładna
+const CUSTOM_FIELD_CLIENT_LEGACY = 'CLIENT';     // Upewnij się, że nazwa jest dokładna
+const CUSTOM_FIELD_CLIENT_2025 = 'CLIENT 2025'; // Nowe pole klienta
 const PARENT_FLAG_VALUE = 'Parent';       // Upewnij się, że wartość jest dokładna
 
 
@@ -68,7 +69,7 @@ async function upsertTaskToDb(taskData, listId, trx) {
     const isParentValue = findCustomFieldValue(taskData.custom_fields, CUSTOM_FIELD_IS_PARENT, 'drop_down');
     const isParentFlag = isParentValue === PARENT_FLAG_VALUE;
     
-    const clientName = findCustomFieldValue(taskData.custom_fields, CUSTOM_FIELD_CLIENT, 'drop_down');
+    const client2025Name = findCustomFieldValue(taskData.custom_fields, CUSTOM_FIELD_CLIENT_2025, 'drop_down');
     
     let extractedMonth = null;
     if (isParentFlag && taskData.name) {
@@ -82,11 +83,14 @@ async function upsertTaskToDb(taskData, listId, trx) {
       parent_clickup_task_id: taskData.parent || null,
       is_parent_flag: isParentFlag, // Ustawione na podstawie pola niestandardowego
       extracted_month_from_name: extractedMonth, // Ustawione jeśli isParentFlag i znaleziono miesiąc
-      custom_field_client: clientName, // Ustawione na podstawie pola niestandardowego
+      // custom_field_client: clientName, // Old field, replaced
+      custom_field_client_2025: client2025Name, // New field for CLIENT 2025
       status_clickup: taskData.status.status,
       time_spent_on_task_ms: taskData.time_spent || 0,
       date_created_clickup: taskData.date_created ? format(fromUnixTime(parseInt(taskData.date_created) / 1000), "yyyy-MM-dd HH:mm:ss") : null,
       date_updated_clickup: taskData.date_updated ? format(fromUnixTime(parseInt(taskData.date_updated) / 1000), "yyyy-MM-dd HH:mm:ss") : null,
+      start_date: taskData.start_date ? format(fromUnixTime(parseInt(taskData.start_date) / 1000), "yyyy-MM-dd HH:mm:ss") : null,
+      due_date: taskData.due_date ? format(fromUnixTime(parseInt(taskData.due_date) / 1000), "yyyy-MM-dd HH:mm:ss") : null,
       archived_clickup: taskData.archived || false,
       date_last_synced: now,
     };
