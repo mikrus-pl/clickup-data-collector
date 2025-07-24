@@ -238,7 +238,7 @@ module.exports = {
             }
 
             await upsertTaskToDb(task, argv.listId, trx); // Zapisz/aktualizuj zadanie
-            await syncTaskAssignees(task.id, task.assignees || [], trx); // Zsynchronizuj przypisanych
+            await syncTaskAssignees(task.id, task.assignees || [], trx); // Zsynchronizuj przypisanych użytkowników
 
             if (existingTask) {
               // Po upsercie: zmiana logiki dla updatedTasksCount
