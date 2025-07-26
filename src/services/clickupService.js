@@ -65,32 +65,38 @@ async function getTeams() {
  * Pobiera listę unikalnych użytkowników ze wszystkich zespołów.
  * @returns {Promise<Array<{id: number, username: string, email: string}>|null>} Tablica obiektów użytkowników.
  */
+/**
+ * Pobiera listę unikalnych użytkowników ze wszystkich zespołów wraz z ich rolami.
+ * Ta wersja iteruje po każdym zespole, aby pobrać szczegółowe dane członków, w tym ich role.
+ * @returns {Promise<Array<{id: number, username: string, email: string, role: number}>|null>} Tablica obiektów użytkowników.
+ */
 async function getAllUsersFromTeams() {
   const teams = await getTeams();
-  if (!teams) {
+  if (process.env.SYNC_USERS_VERBOSE) {
+    console.log('[getAllUsersFromTeams] Raw teams object:', JSON.stringify(teams, null, 2));
+  }
+  if (!teams || teams.length === 0) {
     console.log('No teams found or error fetching teams.');
-    return []; // Zwróć pustą tablicę, jeśli nie ma zespołów
+    return [];
   }
 
   const allUsersMap = new Map(); // Użyj Map do przechowywania unikalnych użytkowników po ID
 
+  // Przetwórz wszystkich członków z każdego zespołu
   teams.forEach(team => {
-    if (team.members) {
+    if (Array.isArray(team.members)) {
       team.members.forEach(member => {
         if (member.user && !allUsersMap.has(member.user.id)) {
           allUsersMap.set(member.user.id, {
-            id: member.user.id,
-            username: member.user.username,
-            email: member.user.email,
-            role: member.role, // Add this line
-            // Możesz dodać więcej pól, jeśli są potrzebne i dostępne, np. profilePicture
+            ...member.user,
+            role: member.user.role, // Rola użytkownika jest w member.user.role
           });
         }
       });
     }
   });
-  
-  console.log(`Fetched ${allUsersMap.size} unique users from ClickUp.`);
+
+  console.log(`Fetched ${allUsersMap.size} unique users from all teams.`);
   return Array.from(allUsersMap.values());
 }
 

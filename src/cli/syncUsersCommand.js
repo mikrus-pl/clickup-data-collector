@@ -7,15 +7,17 @@ module.exports = {
   command: 'sync-users',
   describe: 'Fetches users from ClickUp and synchronizes them with the local database.',
   builder: (yargs) => {
-    // Tutaj można dodać opcje specyficzne dla tej komendy, np.
-    // yargs.option('force', {
-    //   alias: 'f',
-    //   type: 'boolean',
-    //   description: 'Force full resync of users'
-    // });
-    return yargs;
+    return yargs.option('verbose', {
+      alias: 'V', // Use capital V to avoid conflict with global -v (version)
+      type: 'boolean',
+      description: 'Enable verbose logging of all JSON requests and responses',
+      default: false
+    });
   },
   handler: async (argv) => {
+    if (argv.verbose) {
+      process.env.SYNC_USERS_VERBOSE = '1';
+    }
     console.log('Starting user synchronization process...');
     let syncLogId = null;
     const syncStartTime = new Date();
