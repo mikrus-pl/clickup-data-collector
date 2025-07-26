@@ -26,17 +26,15 @@ const TABLES_TO_PURGE = [
   // LUB: dla SQLite można tymczasowo wyłączyć foreign key constraints
 ];
 
-// Lista wszystkich tabel zdefiniowanych w migracjach (w kolejności, w jakiej powinny być tworzone/usuwane)
+// Lista wszystkich tabel zdefiniowanych w migracjach (w kolejności, w jakiej powinny być usuwane - dzieci pierwsze)
 const ALL_TABLES_IN_ORDER = [
-    // Zależności na końcu
-    'ReportedTaskAggregates',
-    'TaskAssignees',
-    'UserHourlyRates',
-    'Tasks', // Zależy od ClickUpLists, Users (pośrednio przez TaskAssignees)
-    // Tabele główne/mniej zależne
-    'SyncLog', // Zależy od ClickUpLists (ale FK jest nullable i ON DELETE SET NULL)
-    'Users',
-    'ClickUpLists',
+    'ReportedTaskAggregates',  // Zależy od Tasks i Users
+    'TaskAssignees',           // Zależy od Tasks i Users
+    'UserHourlyRates',         // Zależy od Users
+    'Tasks',                   // Zależy od ClickUpLists
+    'SyncLog',                 // Zależy od ClickUpLists (ale FK jest nullable)
+    'Users',                   // Tabele główne
+    'ClickUpLists',            // Tabele główne
 ];
 
 
@@ -72,9 +70,9 @@ module.exports = {
       // Knex `truncate()` może mieć problemy z kluczami obcymi w SQLite.
 
       console.log('Deleting data from tables...');
-      // Usuwamy dane w odwrotnej kolejności tworzenia tabel (od dzieci do rodziców)
-      // lub w kolejności, która respektuje klucze obce
-      for (const tableName of ALL_TABLES_IN_ORDER) { // Używamy odwróconej listy tworzenia
+      // Usuwamy dane w kolejności od tabel z zależnościami (dzieci) do tabel nadrzędnych (rodziców)
+      // aby uniknąć problemów z kluczami obcymi
+      for (const tableName of ALL_TABLES_IN_ORDER) {
         console.log(`  - Deleting data from ${tableName}...`);
         await db(tableName).del(); // .del() to alias dla .delete()
       }
