@@ -1,5 +1,6 @@
 const { db } = require('../db/database');
 const { format } = require('date-fns');
+const CommandLogger = require('../utils/commandLogger');
 
 /**
  * Rekurencyjnie oblicza całkowity czas spędzony na zadaniu i jego podzadaniach.
@@ -50,9 +51,23 @@ module.exports = {
       // Można dodać opcję --force-recalculate, aby zawsze przeliczać, nawet jeśli nic się nie zmieniło (na razie przelicza wszystko)
   },
   handler: async (argv) => {
+    // Initialize command logger
+    const commandLogger = new CommandLogger('generate-aggregates');
+    await commandLogger.start({
+      listId: argv.listId,
+      userId: argv.userId
+    });
+    
     console.log('Starting generation of task time aggregates...');
-    if (argv.listId) console.log(`Filtering for list ID: ${argv.listId}`);
-    if (argv.userId) console.log(`Filtering for user ID: ${argv.userId}`);
+    await commandLogger.logOutput('Starting generation of task time aggregates...');
+    if (argv.listId) {
+      console.log(`Filtering for list ID: ${argv.listId}`);
+      await commandLogger.logOutput(`Filtering for list ID: ${argv.listId}`);
+    }
+    if (argv.userId) {
+      console.log(`Filtering for user ID: ${argv.userId}`);
+      await commandLogger.logOutput(`Filtering for user ID: ${argv.userId}`);
+    }
 
     let syncLogId = null;
     const syncStartTime = new Date();
@@ -77,8 +92,11 @@ module.exports = {
       console.log('Fetching all tasks from the database to build hierarchy...');
       const allDbTasks = await db('Tasks').select('*');
       if (allDbTasks.length === 0) {
-        console.log('No tasks found in the database to aggregate.');
+        const noTasksMsg = 'No tasks found in the database to aggregate.';
+        console.log(noTasksMsg);
+        await commandLogger.logOutput(noTasksMsg);
         if (syncLogId) await db('SyncLog').where('log_id', syncLogId).update({ status: 'SUCCESS', details_message: 'No tasks to aggregate.', sync_end_time: format(new Date(), 'yyyy-MM-dd HH:mm:ss')});
+        await commandLogger.complete();
         await db.destroy();
         return;
       }
@@ -162,6 +180,8 @@ module.exports = {
       }
 
       // ZMIANA PODSUMOWANIA
+
+      // ZMIANA PODSUMOWANIA
       console.log('\n--- Aggregate Generation Summary ---');
       console.log(`Total "Parent" tasks found matching criteria: ${totalParentTasksFound}`);
       if (argv.userId) {
@@ -171,20 +191,28 @@ module.exports = {
       console.log(`Unique "Parent" tasks for which aggregates were generated/updated: ${aggregatesGenerated}`);
       console.log(`Total aggregate rows written to ReportedTaskAggregates: ${aggregatesToInsert.length}`);
       console.log('------------------------------------');
+      
+      const summaryMsg = `Total Parent tasks: ${totalParentTasksFound}, Skipped (No Assignee): ${parentTasksSkippedNoAssignee}, Skipped (User Filter): ${parentTasksSkippedUserFilter}, Aggregates Written: ${aggregatesToInsert.length} for ${aggregatesGenerated} parent tasks.`;
+      await commandLogger.logOutput(summaryMsg);
+
+      const successMsg = 'Aggregate generation complete.';
+      console.log(successMsg);
+      await commandLogger.logOutput(successMsg);
+      await commandLogger.complete();
 
       if (syncLogId) {
         await db('SyncLog').where('log_id', syncLogId).update({
           sync_end_time: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
-          items_fetched_new: aggregatesGenerated, // Liczba unikalnych zadań Parent, dla których coś zrobiono
-          items_updated: aggregatesToInsert.length - aggregatesGenerated, // Jeśli jeden parent ma wielu assignees, to te dodatkowe wpisy
+          items_fetched_new: aggregatesGenerated, // Liczba unikalnych parent tasks z agregatem
           status: 'SUCCESS',
-          details_message: `Total Parent Tasks: ${totalParentTasksFound}, Skipped (No Assignee): ${parentTasksSkippedNoAssignee}, Skipped (User Filter): ${parentTasksSkippedUserFilter}, Aggregates Written: ${aggregatesToInsert.length} for ${aggregatesGenerated} parent tasks.`
+          details_message: `Processed ${totalParentTasksFound} parent tasks. Generated ${aggregatesGenerated} aggregates.`
         });
       }
-      console.log('Aggregate generation complete.');
 
     } catch (error) {
       console.error('Error during aggregate generation command:', error);
+      await commandLogger.logOutput(`Error during aggregate generation command: ${error.message}`);
+      await commandLogger.logOutput(error.stack);
       if (syncLogId) {
         await db('SyncLog').where('log_id', syncLogId).update({
           sync_end_time: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
@@ -193,6 +221,7 @@ module.exports = {
         }).catch(logError => console.error('Additionally, failed to update SyncLog for failure:', logError));
       }
       process.exitCode = 1;
+      await commandLogger.fail(error);
     } finally {
       await db.destroy();
     }

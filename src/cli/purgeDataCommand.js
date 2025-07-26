@@ -1,4 +1,5 @@
 const { db } = require('../db/database');
+const CommandLogger = require('../utils/commandLogger');
 // Będziemy potrzebować biblioteki do interaktywnego potwierdzenia
 // `inquirer` jest popularny, ale dla prostego tak/nie można użyć czegoś lżejszego lub readline
 // Dla uproszczenia na razie użyjemy flagi --confirm, ale warto rozważyć `inquirer` dla lepszego UX
@@ -51,18 +52,28 @@ module.exports = {
       });
   },
   handler: async (argv) => {
+    // Initialize command logger
+    const commandLogger = new CommandLogger('purge-data');
+    await commandLogger.start({
+      confirm: argv.confirm
+    });
+    
     if (!argv.confirm) {
-      console.warn('Data purge operation was not confirmed. No action taken.');
+      const warnMsg = 'Data purge operation was not confirmed. No action taken.';
+      console.warn(warnMsg);
+      await commandLogger.logOutput(warnMsg);
       console.warn('To purge all data, run: node app.js purge-data --confirm');
-      // Nie ma potrzeby zamykać połączenia, bo go nie otworzyliśmy do operacji
+      await commandLogger.logOutput('To purge all data, run: node app.js purge-data --confirm');
+      await commandLogger.complete();
       return;
     }
 
     console.warn('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
-    console.warn('!!!                  WARNING: DATA PURGE                  !!!');
-    console.warn('!!! This will delete all data from the application tables !!!');
+    console.warn('!!!              WARNING: DATA PURGE                   !!!');
+    console.warn('!!! This will delete all data from application tables !!!');
     console.warn('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
     console.log('Proceeding with data purge...');
+    await commandLogger.logOutput('Proceeding with data purge...');
 
     try {
       // Dla SQLite, najprostszym sposobem na ominięcie problemów z kluczami obcymi
@@ -86,12 +97,18 @@ module.exports = {
       // await db.raw('PRAGMA foreign_keys = ON;');
       // Jednak .del() powinno działać i jest bezpieczniejsze jeśli FK są ważne.
 
-      console.log('All data has been purged from the specified tables.');
-      console.log('You might want to run "setup-db" if you also want to reset schema migrations status, but data is gone.');
-
+      console.log(`Successfully deleted ${deletedCount} rows from ${TABLES_TO_PURGE.length} tables.`);
+      await commandLogger.logOutput(`Successfully deleted ${deletedCount} rows from ${TABLES_TO_PURGE.length} tables.`);
+      const successMsg = 'Data purge operation completed successfully.';
+      console.log(successMsg);
+      await commandLogger.logOutput(successMsg);
+      await commandLogger.complete();
     } catch (error) {
       console.error('Error during data purge operation:', error);
+      await commandLogger.logOutput(`Error during data purge operation: ${error.message}`);
+      await commandLogger.logOutput(error.stack);
       process.exitCode = 1;
+      await commandLogger.fail(error);
     } finally {
       console.log('Closing database connection (purge-data)...');
       await db.destroy();

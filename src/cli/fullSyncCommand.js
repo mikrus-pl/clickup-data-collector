@@ -30,6 +30,7 @@
 // ale pamiętając, że idealnie byłoby mieć oddzielne funkcje logiki.
 
 const { db } = require('../db/database'); // Potrzebne do zamknięcia połączenia na końcu
+const CommandLogger = require('../utils/commandLogger');
 // Symulacja importu logiki (w rzeczywistości zaimportowalibyśmy wydzielone funkcje)
 const syncUsersActualLogic = require('./syncUsersCommand').handler; // To jest nieidealne
 const syncTasksActualLogic = require('./syncTasksCommand').handler; // To jest nieidealne
@@ -48,9 +49,16 @@ module.exports = {
       });
   },
   handler: async (argv) => {
+    // Initialize command logger
+    const commandLogger = new CommandLogger('full-sync');
+    await commandLogger.start({
+      listId: argv.listId
+    });
+    
     const { execSync } = require('child_process');
     const { listId } = argv;
     console.log(`Starting full synchronization for list ID: ${listId}...`);
+    await commandLogger.logOutput(`Starting full synchronization for list ID: ${listId}...`);
     try {
       console.log('\nStep 1: Synchronizing Users...');
       try {
@@ -78,11 +86,18 @@ module.exports = {
         throw new Error('Full sync aborted at Step 3 (aggregates)');
       }
       console.log('Aggregate generation completed.');
+      await commandLogger.logOutput('Aggregate generation completed.');
 
-      console.log('\nFull synchronization process completed successfully!');
+      const successMsg = 'Full synchronization process completed successfully!';
+      console.log(`\n${successMsg}`);
+      await commandLogger.logOutput(successMsg);
+      await commandLogger.complete();
     } catch (error) {
       console.error('Error during full synchronization process:', error.message);
+      await commandLogger.logOutput(`Error during full synchronization process: ${error.message}`);
+      await commandLogger.logOutput(error.stack);
       process.exitCode = 1;
+      await commandLogger.fail(error);
     } finally {
       if (process.exitCode === 1) {
         console.log('Full sync finished with errors.');

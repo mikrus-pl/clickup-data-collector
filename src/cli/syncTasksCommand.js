@@ -2,6 +2,7 @@ const { db } = require('../db/database');
 const clickupService = require('../services/clickupService');
 const { format, fromUnixTime } = require('date-fns');
 const { extractPolishMonth } = require('../utils/monthParser'); // <--- NOWY IMPORT
+const CommandLogger = require('../utils/commandLogger');
 
 const CUSTOM_FIELD_IS_PARENT = 'IsParent'; // Upewnij się, że nazwa jest dokładna
 const CUSTOM_FIELD_CLIENT_LEGACY = 'CLIENT';     // Upewnij się, że nazwa jest dokładna
@@ -170,14 +171,32 @@ module.exports = {
       });
   },
   handler: async (argv) => {
+    // Initialize command logger
+    const commandLogger = new CommandLogger('sync-tasks');
+    await commandLogger.start({
+      listId: argv.listId,
+      fullSync: argv.fullSync,
+      archived: argv.archived
+    });
+    
     console.log(`Starting task synchronization for list ID: ${argv.listId}...`);
-    if (argv.fullSync) console.log('Full sync mode enabled.');
-    if (argv.archived) console.log('Including archived tasks.');
+    await commandLogger.logOutput(`Starting task synchronization for list ID: ${argv.listId}...`);
+    if (argv.fullSync) {
+      console.log('Full sync mode enabled.');
+      await commandLogger.logOutput('Full sync mode enabled.');
+    }
+    if (argv.archived) {
+      console.log('Including archived tasks.');
+      await commandLogger.logOutput('Including archived tasks.');
+    }
 
     const apiKey = process.env.CLICKUP_API_KEY;
     if (!apiKey) {
-      console.error('ERROR: CLICKUP_API_KEY is not defined. Cannot synchronize tasks.');
+      const errorMsg = 'ERROR: CLICKUP_API_KEY is not defined. Cannot synchronize tasks.';
+      console.error(errorMsg);
+      await commandLogger.logOutput(errorMsg);
       process.exitCode = 1;
+      await commandLogger.fail(errorMsg);
       return;
     }
 
@@ -292,9 +311,16 @@ module.exports = {
           details_message: `Fetched ${fetchedTasksCount} raw tasks from API.`
         });
       }
+      
+      const successMsg = `Task synchronization completed successfully. Fetched: ${fetchedTasksCount}, New: ${newTasksCount}, Updated: ${updatedTasksCount}.`;
+      console.log(successMsg);
+      await commandLogger.logOutput(successMsg);
+      await commandLogger.complete();
 
     } catch (error) {
       console.error('Error during task synchronization command:', error);
+      await commandLogger.logOutput(`Error during task synchronization command: ${error.message}`);
+      await commandLogger.logOutput(error.stack);
       if (syncLogId) {
         await db('SyncLog').where('log_id', syncLogId).update({
           sync_end_time: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
@@ -303,6 +329,7 @@ module.exports = {
         }).catch(logError => console.error('Additionally, failed to update SyncLog for failure:', logError));
       }
       process.exitCode = 1;
+      await commandLogger.fail(error);
     } finally {
       await db.destroy();
     }

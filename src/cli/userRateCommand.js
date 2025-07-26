@@ -1,5 +1,6 @@
 const { db } = require('../db/database');
 const { format, subDays, isValid, parseISO } = require('date-fns'); // Potrzebujemy więcej funkcji z date-fns
+const CommandLogger = require('../utils/commandLogger');
 
 // Pomocnicza funkcja do walidacji formatu daty RRRR-MM-DD
 function isValidDateString(dateString) {
@@ -40,7 +41,16 @@ module.exports = {
             });
         },
         handler: async (argv) => {
+          // Initialize command logger
+          const commandLogger = new CommandLogger('user-rate set');
+          await commandLogger.start({
+            userId: argv.userId,
+            rate: argv.rate,
+            fromDate: argv.fromDate
+          });
+          
           console.log(`Setting hourly rate for user ID ${argv.userId} to ${argv.rate} from ${argv.fromDate}...`);
+          await commandLogger.logOutput(`Setting hourly rate for user ID ${argv.userId} to ${argv.rate} from ${argv.fromDate}...`);
           const { userId, rate, fromDate } = argv;
 
           try {
@@ -105,14 +115,20 @@ module.exports = {
                   effective_to_date: null, // Nowa stawka jest aktywna
                 });
                 console.log(`New hourly rate ${rate} for user ID ${userId} set from ${fromDate}.`);
+                await commandLogger.logOutput(`New hourly rate ${rate} for user ID ${userId} set from ${fromDate}.`);
               }
             }); // Koniec transakcji (commit lub rollback)
 
             console.log('Hourly rate operation completed successfully.');
+            await commandLogger.logOutput('Hourly rate operation completed successfully.');
+            await commandLogger.complete();
 
           } catch (error) {
             console.error('Error setting user hourly rate:', error);
+            await commandLogger.logOutput(`Error setting user hourly rate: ${error.message}`);
+            await commandLogger.logOutput(error.stack);
             process.exitCode = 1;
+            await commandLogger.fail(error);
           } finally {
             await db.destroy();
           }
@@ -129,7 +145,14 @@ module.exports = {
             });
         },
         handler: async (argv) => {
+          // Initialize command logger
+          const commandLogger = new CommandLogger('user-rate list');
+          await commandLogger.start({
+            userId: argv.userId
+          });
+          
           console.log(argv.userId ? `Listing hourly rates for user ID ${argv.userId}...` : 'Listing hourly rates for all users...');
+          await commandLogger.logOutput(argv.userId ? `Listing hourly rates for user ID ${argv.userId}...` : 'Listing hourly rates for all users...');
           try {
             let query = db('UserHourlyRates')
               .join('Users', 'UserHourlyRates.user_id', '=', 'Users.clickup_user_id')
@@ -158,10 +181,15 @@ module.exports = {
                 effective_from_date: rate.effective_from_date, // Już jest stringiem YYYY-MM-DD
                 effective_to_date: rate.effective_to_date || 'Current' // Już jest stringiem YYYY-MM-DD lub null
               })));
+              await commandLogger.logOutput(`Found ${rates.length} hourly rates.`);
             }
+            await commandLogger.complete();
           } catch (error) {
             console.error('Error listing user hourly rates:', error);
+            await commandLogger.logOutput(`Error listing user hourly rates: ${error.message}`);
+            await commandLogger.logOutput(error.stack);
             process.exitCode = 1;
+            await commandLogger.fail(error);
           } finally {
             await db.destroy();
           }
