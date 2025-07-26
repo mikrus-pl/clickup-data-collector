@@ -27,6 +27,7 @@ const TABLES_TO_PURGE = [
 ];
 
 // Lista wszystkich tabel zdefiniowanych w migracjach (w kolejności, w jakiej powinny być usuwane - dzieci pierwsze)
+// CommandLogs table is intentionally excluded from this list as it should persist across purges
 const ALL_TABLES_IN_ORDER = [
     'ReportedTaskAggregates',  // Zależy od Tasks i Users
     'TaskAssignees',           // Zależy od Tasks i Users

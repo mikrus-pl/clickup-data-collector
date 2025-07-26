@@ -11,6 +11,7 @@ const syncTasksCommand = require('./src/cli/syncTasksCommand');
 const generateAggregatesCommand = require('./src/cli/generateAggregatesCommand');
 const fullSyncCommand = require('./src/cli/fullSyncCommand');
 const purgeDataCommand = require('./src/cli/purgeDataCommand');
+const purgeLogsCommand = require('./src/cli/purgeLogsCommand');
 
 async function main() {
   // Najpierw sprawdźmy połączenie z bazą danych, zanim zaczniemy cokolwiek robić
@@ -35,6 +36,7 @@ async function main() {
     .command(generateAggregatesCommand)
     .command(fullSyncCommand)
     .command(purgeDataCommand)
+    .command(purgeLogsCommand)
 
     // Możesz dodać więcej globalnych opcji, np. --verbose
     // .option('verbose', {
