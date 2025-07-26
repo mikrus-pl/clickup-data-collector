@@ -84,9 +84,12 @@ module.exports = {
       console.log('Deleting data from tables...');
       // Usuwamy dane w kolejności od tabel z zależnościami (dzieci) do tabel nadrzędnych (rodziców)
       // aby uniknąć problemów z kluczami obcymi
+      let totalDeletedCount = 0;
       for (const tableName of ALL_TABLES_IN_ORDER) {
         console.log(`  - Deleting data from ${tableName}...`);
-        await db(tableName).del(); // .del() to alias dla .delete()
+        const deletedCount = await db(tableName).del(); // .del() to alias dla .delete()
+        totalDeletedCount += deletedCount;
+        console.log(`    Deleted ${deletedCount} rows from ${tableName}`);
       }
 
       // Alternatywnie, jeśli .del() ma problemy z FK w SQLite, można:
@@ -97,8 +100,8 @@ module.exports = {
       // await db.raw('PRAGMA foreign_keys = ON;');
       // Jednak .del() powinno działać i jest bezpieczniejsze jeśli FK są ważne.
 
-      console.log(`Successfully deleted ${deletedCount} rows from ${TABLES_TO_PURGE.length} tables.`);
-      await commandLogger.logOutput(`Successfully deleted ${deletedCount} rows from ${TABLES_TO_PURGE.length} tables.`);
+      console.log(`Successfully deleted ${totalDeletedCount} rows from ${ALL_TABLES_IN_ORDER.length} tables.`);
+      await commandLogger.logOutput(`Successfully deleted ${totalDeletedCount} rows from ${ALL_TABLES_IN_ORDER.length} tables.`);
       const successMsg = 'Data purge operation completed successfully.';
       console.log(successMsg);
       await commandLogger.logOutput(successMsg);
