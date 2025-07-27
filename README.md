@@ -270,13 +270,94 @@ node app.js purge-data --confirm
 
 Aplikacja używa bazy danych SQLite przechowywanej w pliku `data/app_data.sqlite3` (ścieżka zdefiniowana w `knexfile.js`). Główne tabele to:
 
-- **Users:** Informacje o użytkownikach ClickUp.
-- **UserHourlyRates:** Historia stawek godzinowych użytkowników.
-- **ClickUpLists:** Informacje o listach ClickUp, z których synchronizowane są dane.
-- **Tasks:** Szczegółowe dane o zadaniach i podzadaniach z ClickUp, w tym przetworzone pola niestandardowe.
-- **TaskAssignees:** Tabela łącząca zadania z przypisanymi użytkownikami.
-- **ReportedTaskAggregates:** Kluczowa tabela wynikowa zawierająca zagregowany czas pracy (minuty, sekundy) dla każdego zadania "Parent" w kontekście przypisanego użytkownika, klienta i miesiąca. To jest podstawa do dalszych analiz kosztowych.
-- **SyncLog:** Logi operacji synchronizacji.
+### Users
+Informacje o użytkownikach ClickUp.
+
+- `clickup_user_id` (integer, primary key) - ID użytkownika z ClickUp
+- `username` (string) - Nazwa użytkownika z ClickUp
+- `email` (string) - Adres email użytkownika
+- `is_active` (boolean) - Czy użytkownik jest aktywny
+- `date_synced` (datetime) - Data ostatniej synchronizacji
+- `role` (integer) - Rola użytkownika w ClickUp
+
+### UserHourlyRates
+Historia stawek godzinowych użytkowników.
+
+- `rate_id` (increments, primary key) - Wewnętrzny autoinkrementujący ID
+- `user_id` (integer) - ID użytkownika (klucz obcy do Users)
+- `hourly_rate` (decimal) - Stawka godzinowa
+- `effective_from_date` (date) - Data, od której stawka obowiązuje
+- `effective_to_date` (date) - Data, do której stawka obowiązuje (NULL = aktualna)
+
+### ClickUpLists
+Informacje o listach ClickUp, z których synchronizowane są dane.
+
+- `clickup_list_id` (string, primary key) - ID listy z ClickUp
+- `list_name` (string) - Nazwa listy
+- `last_successful_task_sync_timestamp` (datetime) - Timestamp ostatniej synchronizacji zadań
+
+### Tasks
+Szczegółowe dane o zadaniach i podzadaniach z ClickUp, w tym przetworzone pola niestandardowe.
+
+- `clickup_task_id` (string, primary key) - ID zadania z ClickUp
+- `clickup_list_id` (string) - ID listy, do której należy zadanie (klucz obcy do ClickUpLists)
+- `name` (text) - Nazwa zadania
+- `parent_clickup_task_id` (string) - ID zadania nadrzędnego (klucz obcy do Tasks)
+- `is_parent_flag` (boolean) - Flaga oznaczająca zadanie jako "Parent"
+- `extracted_month_from_name` (string) - Miesiąc wyekstrahowany z nazwy zadania
+- `custom_field_client` (string) - Nazwa klienta z pola niestandardowego
+- `custom_field_client_2025` (string) - Nazwa klienta z pola niestandardowego (nowsza wersja)
+- `status_clickup` (string) - Status zadania w ClickUp
+- `time_spent_on_task_ms` (bigInteger) - Czas spędzony na zadaniu w milisekundach
+- `date_created_clickup` (datetime) - Data utworzenia zadania w ClickUp
+- `date_updated_clickup` (datetime) - Data aktualizacji zadania w ClickUp
+- `start_date` (datetime) - Planowana data rozpoczęcia
+- `due_date` (datetime) - Planowana data zakończenia
+- `archived_clickup` (boolean) - Czy zadanie jest zarchiwizowane
+- `date_last_synced` (datetime) - Data ostatniej synchronizacji
+
+### TaskAssignees
+Tabela łącząca zadania z przypisanymi użytkownikami.
+
+- `clickup_task_id` (string) - ID zadania (klucz obcy do Tasks)
+- `clickup_user_id` (integer) - ID użytkownika (klucz obcy do Users)
+
+### ReportedTaskAggregates
+Kluczowa tabela wynikowa zawierająca zagregowany czas pracy (minuty, sekundy) dla każdego zadania "Parent" w kontekście przypisanego użytkownika, klienta i miesiąca. To jest podstawa do dalszych analiz kosztowych.
+
+- `clickup_parent_task_id` (string) - ID zadania "Parent" (klucz obcy do Tasks)
+- `reported_for_user_id` (integer) - ID użytkownika (klucz obcy do Users)
+- `parent_task_name` (text) - Nazwa zadania "Parent"
+- `client_name` (string) - Nazwa klienta
+- `extracted_month_from_parent_name` (string) - Miesiąc wyekstrahowany z nazwy zadania
+- `total_time_minutes` (integer) - Całkowity czas w minutach
+- `total_time_seconds` (integer) - Całkowity czas w sekundach (0-59)
+- `last_calculated_at` (datetime) - Data ostatniego przeliczenia
+
+### Invoices
+Tabela przechowująca dane o fakturach, w tym nazwę klienta, kwotę faktury, walutę, miesiąc przypisania i datę utworzenia. Umożliwia analizę przychodów w porównaniu do kosztów projektów.
+
+- `invoice_id` (increments, primary key) - Auto-incrementing ID for the invoice
+- `customer_name` (string) - Name of the customer
+- `invoice_amount` (decimal) - Invoice amount with up to 12 digits and 2 decimal places
+- `invoice_currency` (string) - Currency code (e.g., 'USD', 'EUR', 'PLN')
+- `month_name` (string) - Month name to know which month it should be assigned to
+- `entry_creation_date` (datetime) - Entry creation date
+- `date_last_updated` (datetime) - Last updated timestamp
+- `description` (text) - Description of the invoice/services provided
+
+### SyncLog
+Logi operacji synchronizacji.
+
+- `log_id` (increments, primary key) - Auto-incrementing ID
+- `sync_start_time` (datetime) - Data rozpoczęcia synchronizacji
+- `sync_end_time` (datetime) - Data zakończenia synchronizacji
+- `sync_type` (string) - Typ synchronizacji (np. "USERS", "TASKS_FULL", "TASKS_INCREMENTAL", "AGGREGATES")
+- `target_list_id` (string) - ID listy ClickUp, jeśli dotyczy (klucz obcy do ClickUpLists)
+- `items_fetched_new` (integer) - Liczba nowych elementów
+- `items_updated` (integer) - Liczba zaktualizowanych elementów
+- `status` (string) - Status synchronizacji ('SUCCESS', 'PARTIAL_FAILURE', 'FAILURE')
+- `details_message` (text) - Dodatkowe informacje, błędy
 
 Szczegółowy schemat każdej tabeli można znaleźć w plikach migracji w folderze `src/db/migrations/`.
 
