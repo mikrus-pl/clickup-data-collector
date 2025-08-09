@@ -179,7 +179,7 @@ node app.js user-rate list
 
 #### Komenda: sync-tasks
 
-Pobiera zadania (wraz z podzadaniami) z określonej listy ClickUp i synchronizuje je z lokalną bazą danych (tabele Tasks i TaskAssignees). Przetwarza również pola niestandardowe ("IsParent", "CLIENT") oraz ekstrahuje miesiąc z nazwy zadań "Parent".
+Pobiera zadania (wraz z podzadaniami) z określonej listy ClickUp i synchronizuje je z lokalną bazą danych (tabele Tasks i TaskAssignees). Przetwarza pola niestandardowe, w tym identyfikuje zadania "Parent" oraz ekstrahuje informacje o kliencie z pól "CLIENT 2025" i "CLIENT". Dodatkowo ekstrahuje miesiąc z nazw zadań "Parent".
 
 ```bash
 node app.js sync-tasks --listId <ID_LISTY_CLICKUP> [--full-sync] [--archived]
@@ -190,6 +190,16 @@ Parametry:
 - `--listId <ID_LISTY_CLICKUP>`: (Wymagane) ID listy ClickUp, z której mają być pobrane zadania.
 - `--full-sync`: (Opcjonalne) Wykonuje pełną synchronizację zadań, ignorując datę ostatniej synchronizacji. Domyślnie aplikacja wykonuje synchronizację inkrementalną (pobiera tylko zadania zaktualizowane od ostatniego udanego pobrania).
 - `--archived`: (Opcjonalne) Uwzględnia również zadania zarchiwizowane. Domyślnie zarchiwizowane zadania są pomijane.
+
+Szczegóły przetwarzania:
+
+- Pola niestandardowe typu "drop_down" są poprawnie przetwarzane, w tym pola "IsParent" i "CLIENT 2025".
+- Zadania oznaczone jako "Parent" w polu niestandardowym są odpowiednio flagowane w bazie danych.
+- Dla zadań "Parent" aplikacja próbuje wyekstrahować nazwę miesiąca z ich nazwy.
+- Informacje o kliencie są pobierane z pola "CLIENT 2025" (nowsze) lub "CLIENT" (starsze).
+- Przypisania użytkowników do zadań są synchronizowane wraz z zadaniami.
+- Operacje na bazie danych są wykonywane w transakcjach dla zapewnienia spójności danych.
+- Szczegółowe logi operacji są zapisywane w tabeli SyncLog.
 
 **Przykład:**
 
@@ -202,6 +212,8 @@ node app.js sync-tasks --listId 901206975324 --full-sync --archived
 
 Oblicza sumaryczny czas pracy dla każdego zadania "Parent" (uwzględniając czas spędzony na jego podzadaniach) w kontekście każdego przypisanego do niego użytkownika. Wyniki zapisuje do tabeli ReportedTaskAggregates. Zaleca się uruchomienie tej komendy po każdej synchronizacji zadań (`sync-tasks`).
 
+Komenda rekurencyjnie oblicza całkowity czas spędzony na zadaniu "Parent" i wszystkich jego podzadaniach. Przetwarza również informacje o kliencie (z pola "CLIENT 2025") oraz ekstrahuje nazwę miesiąca z nazwy zadania "Parent". Wyniki są zapisywane w tabeli ReportedTaskAggregates wraz z informacjami o użytkowniku, dla którego zgłaszany jest czas.
+
 ```bash
 node app.js generate-aggregates [--listId <ID_LISTY_CLICKUP>] [--userId <ID_UZYTKOWNIKA_CLICKUP>]
 ```
@@ -210,6 +222,22 @@ Parametry:
 
 - `--listId <ID_LISTY_CLICKUP>`: (Opcjonalne) Ogranicza generowanie agregatów do zadań "Parent" z tej konkretnej listy.
 - `--userId <ID_UZYTKOWNIKA_CLICKUP>`: (Opcjonalne) Ogranicza generowanie agregatów do zadań "Parent", do których przypisany jest ten konkretny użytkownik.
+
+Szczegóły przetwarzania:
+
+- Rekurencyjne obliczanie czasu dla zadań "Parent" i ich podzadań
+- Obsługa zapobiegania nieskończonym pętlom w przypadku błędów w strukturze zadań
+- Ekstrakcja informacji o kliencie z pola "CLIENT 2025"
+- Ekstrakcja nazwy miesiąca z nazwy zadania "Parent"
+- Zapis szczegółowych informacji w tabeli ReportedTaskAggregates:
+  - ID i nazwa zadania "Parent"
+  - Nazwa klienta
+  - Nazwa miesiąca
+  - Całkowity czas w minutach i sekundach
+  - Użytkownik, dla którego zgłaszany jest czas
+- Generowanie szczegółowych statystyk na końcu wykonania
+- Kompleksowe logowanie operacji i obsługę błędów
+- Użycie transakcji bazodanowych dla spójności danych
 
 **Przykład:**
 
@@ -390,13 +418,13 @@ Sprawdź tabelę `UserHourlyRates`.
 
 **Synchronizacja zadań:**
 
-Znajdź ID listy w ClickUp, która zawiera zadania z polami niestandardowymi "IsParent" i "CLIENT" oraz zadania "Parent" z nazwami miesięcy.
+Znajdź ID listy w ClickUp, która zawiera zadania z polami niestandardowymi "IsParent" i "CLIENT 2025" oraz zadania "Parent" z nazwami miesięcy.
 
 ```bash
 node app.js sync-tasks --listId <TWOJE_TESTOWE_ID_LISTY> --full-sync
 ```
 
-Sprawdź logi (w tym ostrzeżenia o podzadaniach oznaczonych jako "Parent"). Sprawdź tabele `Tasks`, `TaskAssignees`, `ClickUpLists`, `SyncLog`. Zwróć uwagę na wypełnienie kolumn `is_parent_flag`, `custom_field_client`, `extracted_month_from_name` w tabeli `Tasks`.
+Sprawdź logi (w tym ostrzeżenia o podzadaniach oznaczonych jako "Parent"). Sprawdź tabele `Tasks`, `TaskAssignees`, `ClickUpLists`, `SyncLog`. Zwróć uwagę na wypełnienie kolumn `is_parent_flag`, `custom_field_client_2025`, `extracted_month_from_name` w tabeli `Tasks`.
 
 **Generowanie agregatów:**
 
